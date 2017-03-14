@@ -39,7 +39,7 @@ class GLUTVis:
 
         vortons = self.fluidSim.getVortons()
 
-        vorticityDistribution.assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistribution.JetRing( fRadius , fThickness , array( [2.0 , 0.0 , 0.0] ) ) )
+        vorticityDistribution.assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistribution.JetRing( fRadius , fThickness , array( [2.0 , 0.0 , 0.0] ) ),array([ 0.0 , 0.0 , 0.0 ]) )
 
 
         self.fluidSim.initialise( numTracersPer )
@@ -50,6 +50,17 @@ class GLUTVis:
             
         #print "dumping influence tree"
         #self.fluidSim.influenceTree.dumpSelf()
+
+    def addVortons(self):
+        fRadius = 1.0
+        fThickness = 1.0
+        fMagnitude = 20.0
+        numCellsPerDim = 16
+        numVortonsMax = numCellsPerDim * numCellsPerDim * numCellsPerDim
+        vortons = self.fluidSim.getVortons()
+
+        vorticityDistribution.assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistribution.JetRing( fRadius , fThickness , array( [-2.0 , 0.0 , 0.0] ) ),array([ 12.0 , 0.0 , 0.0 ]) )
+
         
         
     ''' Move sim forward in time.
@@ -74,6 +85,8 @@ if __name__ == "__main__":
 
     for i in range(1000):
         glsim.stepForward()
+        if i == 200:
+            glsim.addVortons()
     #cProfile.runctx("glsim.fluidSim.update(1.0/60.0, 1)", globals(), locals(), "/tmp/fs.profile")
     #glsim.fluidSim.update(1.0/60.0, 1)
     #print vorts

@@ -130,10 +130,10 @@ class JetRing:
         Suggested value provided should be at least 512, which corresponds to an 8x8x8 grid.
 '''
 
-def assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistribution ):
+def assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistribution, vCenter ):
 
     vDimensions     = vorticityDistribution.getDomainSize() # length of each side of grid box
-    vCenter  =       array([ 0.0 , 0.0 , 0.0 ])                        # Center of vorticity distribution
+    #vCenter  =       array([ 0.0 , 0.0 , 0.0 ])                        # Center of vorticity distribution
     vMin     =       vCenter - 0.5 * vDimensions              # Minimum corner of box containing vortons
     vMax     =       vMin + vDimensions                       # Maximum corner of box containing vortons
     skeleton =      uniformGrid.UniformGridGeometry( numVortonsMax , vMin , vMax , True )
@@ -187,7 +187,7 @@ def assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistributio
                 position = array([ position_x , position_y , position_z ])                              # vorton position
                 position += vNoise * ( random.random() - 0.5 ) 
                 vorticity = vorticityDistribution.assignVorticity( position , vCenter )
-                vorton = Vorton( position , vorticity * fMagnitude , vortonRadius )
+                vorton = Vorton( position, vorticity * fMagnitude , vortonRadius )
                 floatEpsilon = sys.float_info.epsilon
                 floatMin = sys.float_info.min
                 sTiny = math.exp( 0.5 * ( math.log( floatEpsilon ) + math.log( floatMin ) ) )
