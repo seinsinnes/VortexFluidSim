@@ -115,6 +115,27 @@ class JetRing:
                 
             return vorticity
 
+def randomSpread( fSpread ):
+    randomFloat = fSpread * ( random.random() - 0.5 )
+    return randomFloat
+
+class VortexNoise:
+
+        def __init__(self, vBox ):
+            self.box=vBox
+            self.amplitude = array([ 1.0, 1.0, 1.0 ])
+            if vBox[0] == 0.0:
+                # Domain is 2D (in XY plane).
+                # Make vorticity purely vertical.
+                self.amplitude = array([  0.0 , 0.0 , 1.0 ])
+
+        def getDomainSize(self):
+            return self.box
+
+        def assignVorticity(self, position, vCenter):
+            vorticity = randomSpread( self.amplitude )
+
+
 
 ''' \brief Create a vorticity field using vortex particles
 
