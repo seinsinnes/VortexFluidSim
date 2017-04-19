@@ -885,6 +885,7 @@ class VortonSim:
 
             self.velGrid.setCell(result[0], result[1])
         print "results recv'd"
+
         f2 = open("/tmp/grid.a","w")
         
         
@@ -1255,6 +1256,7 @@ class VortonSim:
         print "inter finished"
         #f.write("f 1 2 3 4")
         #f.close()
+        Output.vtk.writeGrid("sim.out/grid" + str(uFrame),self.velGrid)
         Output.vtk.write( "sim.out/tracer" + str(uFrame), self.tracers )
     ''' \brief Advect passive tracers using velocity field
 
