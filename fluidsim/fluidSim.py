@@ -1260,7 +1260,7 @@ class VortonSim:
         Output.vtk.write( "sim.out/tracer" + str(uFrame), self.tracers )
     ''' \brief Advect passive tracers using velocity field
 
-    \param timeStep - amount of time by which to advance simulation
+    \param timeStep - amount of time by which to advance simulationc
 
     \param uFrame - frame counter
 
