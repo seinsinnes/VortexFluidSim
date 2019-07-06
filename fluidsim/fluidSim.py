@@ -19,9 +19,9 @@ import copy
 #import functools
 #import ctypes
 #import computeVel
-import fluid
+#import fluid
 import Output.vtk
-import grid
+#import grid
 
 OneOverFourPi       = 1.0 / (4*math.pi)
 sAvoidSingularity   = math.pow( sys.float_info.min , 1.0 / 3.0 )
@@ -54,7 +54,76 @@ def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, recip
     else:
         rMatrix[2] = ( vecGrid.getCell(aIndex + [0,0,1]) - vecGrid.getCell(aIndex - [0,0,1]) ) * halfReciprocalSpacing[2]
 
+    '''! \brief Compute velocity at a given point in space, due to influence of vortons
+
+\param vPosition - point in space
+
+\return velocity at vPosition, due to influence of vortons
+
+\note This is a brute-force algorithm with time complexity O(N)
+        where N is the number of vortons.  This is too slow
+        for regular use but it is useful for comparisons.
+
+'''
+def computeVelocityBruteForce( vPosition, vortonInfoList ):
+
+    #numVortons          = len(self.vortons)
+    velocityAccumulator =  array([0.0 , 0.0 , 0.0])
+    refVel =  array([0.0 , 0.0 , 0.0])
     
+    #velocityTemp = self.ctypeConv()
+    #av = functools.partial(self.accumulateVelocity, vPosition)
+    #vPosition = self.ctypeConv(vPosition[0],vPosition[1],vPosition[2])
+
+    for vortonInfo in vortonInfoList:
+        #self.vortonInfoList.append([rVorton.position, rVorton.vorticity, [rVorton.radius,0.0,0.0]])
+        #For each vorton...
+        #vortPos = self.ctypeConv(rVorton.position[0],rVorton.position[1],rVorton.position[2])
+        #vortVort = self.ctypeConv(rVorton.vorticity[0],rVorton.vorticity[1],rVorton.vorticity[2])
+        #vortRadius = ctypes.c_double(rVorton.radius)
+        #print "f"
+        #vel = computeVel.computevel.accumulatevelocity( vPosition , vortonInfo )
+        #vel = fluid.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )
+        velocityAccumulator += accumulateVelocity( vPosition , vortonInfo[0:3], vortonInfo[3:6], vortonInfo[6] )
+        #print vel
+        #velocityAccumulator += vel
+        #print "py"
+        #refVel += self.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )
+
+        #print numpy.ctypeslib.as_array(velocityTemp)
+        #velocityAccumulator += numpy.ctypeslib.as_array(velocityTemp)
+        
+    #velocityAccumulator = sum([ av(vortonInfo) for vortonInfo in self.vortonInfoList])
+    #return numpy.ctypeslib.as_array(velocityAccumulator)
+    #print refVel
+    #print velocityAccumulator
+    return velocityAccumulator
+
+def accumulateVelocity( vPosQuery , vortPos, vortVort, vortRadius ):
+    #VortonInfo = [positon, vorticity, radius]                                                                                                  
+    vNeighborToSelf     = vPosQuery - vortPos                     
+    radius2             = vortRadius * vortRadius                                           
+    dist2               = numpy.dot(vNeighborToSelf, vNeighborToSelf) + sAvoidSingularity                 
+    oneOverDist         = 1 / math.sqrt( dist2 )
+    
+    
+    ''' If the reciprocal law is used everywhere then when 2 vortices get close, they tend to jettison. '''
+    '''Mitigate this by using a linear law when 2 vortices get close to each other.'''
+    #print vVelocity
+    if dist2 < radius2:
+        # Inside vortex core
+        distLaw = ( oneOverDist / radius2 )
+    else:
+        #Outside vortex core                             \
+        distLaw = ( oneOverDist / dist2 )
+        
+    #print OneOverFourPi
+    #vVelocity +=  OneOverFourPi * ( 8.0 * radius2 * mRadius ) * numpy.cross(mVorticity, vNeighborToSelf) * distLaw
+    vVelocity =  OneOverFourPi * ( 8.0 * radius2 * vortRadius ) * crossProduct(vortVort, vNeighborToSelf) * distLaw 
+    #print
+    #print vVelocity
+    return vVelocity
+
 
 '''! \brief Compute Jacobian of a vector field
 
@@ -245,10 +314,10 @@ class SimWorkers:
                 worker.start()
             
     def broadcastVortons(self, vortonList):
-        print "broadcast vlist"
+        print("broadcast vlist")
         for c in self.workerComms:
             c.send(vortonList)
-        print "bc done"
+        print ("bc done")
         
     def scatterWork(self, workList):
         num = len(workList)
@@ -256,9 +325,9 @@ class SimWorkers:
         sliceEnd = 0
         workerNum = 0
         divr = self.numWorkers
-        print "distWork" + str(num)
+        print("distWork" + str(num))
         while num != 0:
-            d = num/divr
+            d = int(num/divr)
             num = num - d
             divr -= 1
             sliceEnd = sliceBegin + d
@@ -271,26 +340,35 @@ class SimWorkers:
         while True:
             #for c in self.workerComms:
             #    c.close()
-            print "worker ready"
+            print("worker ready")
             vortonList = dpipe.recv()
-            print "recv'd"
+            print ("recv'd")
             workList = dpipe.recv()
-            print "worklist recv'd"
+            print ("worklist recv'd")
+            if not vortonList or not workList:
+                break
             #computeVel.computevel.setvortoninfolist(vortonList, len(vortonList))
             #print "vort"            
             #print len(vortonList),len(vortonList[0]),len(vortonList[0][0]),vortonList[0][0].dtype
-            fluid.setVortonStatsList(vortonList)
-            self.vortonInfoList = vortonList
+            #fluid.setVortonStatsList(vortonList)
+            #self.vortonInfoList = vortonList
             for pos in workList:
                 #print pos[1]
                 #vel = computeVel.computevel.computevelocitybruteforce(pos[0])
-                #vel = self.computeVelocityBruteForce(pos[0])
-                vel = fluid.computeVelocityAtPosition(pos[0])
+                vel = computeVelocityBruteForce(pos[0], vortonList)
+                #vel = fluid.computeVelocityAtPosition(pos[0])
                 #if vel[0]-vel2[0]!= 0 or vel[1]-vel2[1]!= 0 or vel[2]-vel2[2]!= 0:
                 #    print "decrp: ",vel,vel2,pos[0]
                 self.resultQ.put([pos[1],vel])
             
             self.resultQ.put(None)
+
+    def endWork(self):
+        for workerNum in range(self.numWorkers):
+            self.workerComms[workerNum].send(None)
+            self.workerComms[workerNum].send(None)
+        for workerNum in range(self.numWorkers):
+            self.simWorkers[workerNum].join()
             
     def getResult(self):
         result = None 
@@ -299,7 +377,7 @@ class SimWorkers:
             if result == None:
                 self.workersDoneCount +=1
             if self.workersDoneCount == self.numWorkers:
-                print "All complete"
+                print("All complete")
                 self.workersDoneCount = 0
                 break
         #print result
@@ -307,50 +385,6 @@ class SimWorkers:
             #get Q item
             #process
             #put result on to Q
-        '''! \brief Compute velocity at a given point in space, due to influence of vortons
-
-    \param vPosition - point in space
-
-    \return velocity at vPosition, due to influence of vortons
-
-    \note This is a brute-force algorithm with time complexity O(N)
-            where N is the number of vortons.  This is too slow
-            for regular use but it is useful for comparisons.
-
-    '''
-    def computeVelocityBruteForce(self, vPosition ):
-
-        #numVortons          = len(self.vortons)
-        velocityAccumulator =  array([0.0 , 0.0 , 0.0])
-        refVel =  array([0.0 , 0.0 , 0.0])
-        
-        #velocityTemp = self.ctypeConv()
-        #av = functools.partial(self.accumulateVelocity, vPosition)
-        #vPosition = self.ctypeConv(vPosition[0],vPosition[1],vPosition[2])
-
-        for vortonInfo in self.vortonInfoList:
-            #self.vortonInfoList.append([rVorton.position, rVorton.vorticity, [rVorton.radius,0.0,0.0]])
-            #For each vorton...
-            #vortPos = self.ctypeConv(rVorton.position[0],rVorton.position[1],rVorton.position[2])
-            #vortVort = self.ctypeConv(rVorton.vorticity[0],rVorton.vorticity[1],rVorton.vorticity[2])
-            #vortRadius = ctypes.c_double(rVorton.radius)
-            #print "f"
-            #vel = computeVel.computevel.accumulatevelocity( vPosition , vortonInfo )
-            #vel = fluid.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )
-            vel = fluid.accumulateVelocity( vPosition , vortonInfo[0:3], vortonInfo[3:6], vortonInfo[6] )
-            #print vel
-            velocityAccumulator += vel
-            #print "py"
-            #refVel += self.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )
-
-            #print numpy.ctypeslib.as_array(velocityTemp)
-            #velocityAccumulator += numpy.ctypeslib.as_array(velocityTemp)
-            
-        #velocityAccumulator = sum([ av(vortonInfo) for vortonInfo in self.vortonInfoList])
-        #return numpy.ctypeslib.as_array(velocityAccumulator)
-        #print refVel
-        #print velocityAccumulator
-        return velocityAccumulator
 
 class VortonSim:
     def __init__(self, viscosity , density):
@@ -672,13 +706,13 @@ class VortonSim:
                     numXYchild = numXchild * rChildLayer.getNumPoints( 1 )
                     # For each cell of child layer in this grid cluster...
                  
-                    for increment_z in range( pClusterDims[2] ):
+                    for increment_z in range( int(pClusterDims[2]) ):
                 
                         offsetZ = ( clusterMinIndices[2] + increment_z ) * numXYchild ;
-                        for increment_y in range( pClusterDims[1] ):
+                        for increment_y in range( int(pClusterDims[1]) ):
 
                             offsetYZ = ( clusterMinIndices[1] + increment_y ) * numXchild + offsetZ ;
-                            for increment_x in range( pClusterDims[0] ):
+                            for increment_x in range( int(pClusterDims[0]) ):
                         
                                 offsetXYZ       = ( clusterMinIndices[0] + increment_x ) + offsetYZ ;
                                 vortonChild    = rChildLayer.getCell([ clusterMinIndices[0] + increment_x, clusterMinIndices[1] + increment_y, clusterMinIndices[2] + increment_z])
@@ -710,15 +744,15 @@ class VortonSim:
         end          = [ 7*self.influenceTree[0].getNumCells(0)/8 , 7*self.influenceTree[0].getNumCells(1)/8 , 7*self.influenceTree[0].getNumCells(2)/8 ]
         pclSize      = 2.0 * math.pow( vSpacing[0] * vSpacing[1] * vSpacing[2] , 2.0 / 3.0 ) / float( multiplier )
         noise           = vSpacing / float( multiplier )
-        print "n"
-        print noise
+        print ("n")
+        print (noise)
     #unsigned        idx[3]          ;
 
         nt           = [ multiplier , multiplier , multiplier ]
         #print "trace",begin,end
-        for idx_z in range(begin[2],end[2]+1):
-            for idx_y in range(begin[1], end[1]+1):
-                for idx_x in range(begin[0], end[0]+1):
+        for idx_z in range(int(begin[2]),int(end[2]+1)):
+            for idx_y in range(int(begin[1]), int(end[1]+1)):
+                for idx_x in range(int(begin[0]), int(end[0]+1)):
                     
                     #For each interior grid cell...
                     #Vec3 vPosMinCorner ;
@@ -747,30 +781,7 @@ class VortonSim:
                                 self.tracers.append(pcl)
                                 
     
-    def accumulateVelocity(self, vPosQuery , vortPos, vortVort, vortRadius ):
-        #VortonInfo = [positon, vorticity, radius]                                                                                                  
-        vNeighborToSelf     = vPosQuery - vortPos                     
-        radius2             = vortRadius * vortRadius                                           
-        dist2               = numpy.dot(vNeighborToSelf, vNeighborToSelf) + sAvoidSingularity                 
-        oneOverDist         = 1 / math.sqrt( dist2 )
-        
-        
-        ''' If the reciprocal law is used everywhere then when 2 vortices get close, they tend to jettison. '''
-        '''Mitigate this by using a linear law when 2 vortices get close to each other.'''
-        #print vVelocity
-        if dist2 < radius2:
-            # Inside vortex core
-            distLaw = ( oneOverDist / radius2 )
-        else:
-            #Outside vortex core                             \
-            distLaw = ( oneOverDist / dist2 )
-            
-        #print OneOverFourPi
-        #vVelocity +=  OneOverFourPi * ( 8.0 * radius2 * mRadius ) * numpy.cross(mVorticity, vNeighborToSelf) * distLaw
-        vVelocity =  OneOverFourPi * ( 8.0 * radius2 * vortRadius ) * crossProduct(vortVort, vNeighborToSelf) * distLaw 
-        #print
-        #print vVelocity
-        return vVelocity
+
 
     '''! \brief Compute velocity due to vortons, for a subset of points in a uniform grid
 
@@ -877,14 +888,14 @@ class VortonSim:
                 yi+=1
             zi+=1
         f2.close()
-        print "getting results"
+        print("getting results")
         while True:
             result = self.simWF.getResult()
             if result == None:
                 break
 
             self.velGrid.setCell(result[0], result[1])
-        print "results recv'd"
+        print("results recv'd")
 
         f2 = open("/tmp/grid.a","w")
         
@@ -1189,7 +1200,7 @@ class VortonSim:
         #f = open("sim.out/tracer"+ str(uFrame)+".obj", "w")
         #largestVel = 0.0
         #print f
-        print "copy grid cont"
+        print("copy grid cont")
         f2 = open("sim.out/grid","w")
         
         
@@ -1253,7 +1264,7 @@ class VortonSim:
             #print velocity
                 
         #rib.write(uFrame,self.tracers)
-        print "inter finished"
+        print("inter finished")
         #f.write("f 1 2 3 4")
         #f.close()
         Output.vtk.writeGrid("sim.out/grid" + str(uFrame),self.velGrid)
@@ -1296,12 +1307,12 @@ class VortonSim:
         #QUERY_PERFORMANCE_EXIT( VortonSim_CreateInfluenceTree ) ;
 
         #QUERY_PERFORMANCE_ENTER ;
-        print "ComputeVelGrid"
+        print("ComputeVelGrid")
         self.computeVelocityGrid()
         #QUERY_PERFORMANCE_EXIT( VortonSim_ComputeVelocityGrid ) ;
         #self.dumpVelGrid()
         #QUERY_PERFORMANCE_ENTER ;
-        print "stretchAndTiltVortons"
+        print("stretchAndTiltVortons")
         self.stretchAndTiltVortons( timeStep , uFrame )
         #QUERY_PERFORMANCE_EXIT( VortonSim_StretchAndTiltVortons ) ;
         #self.dumpVelGrid()

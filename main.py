@@ -71,11 +71,13 @@ class GLUTVis:
 
         self.frame += 1
         self.timeNow += self.timeStep
+    def endSim(self):
+        self.fluidSim.simWF.endWork()
 
 
 
 if __name__ == "__main__":
-    print "starting"
+    print("starting")
     glsim = GLUTVis(0.05, 1.0)
     #print glsim
     #vorts = glsim.fluidSim.getVortons()
@@ -83,10 +85,11 @@ if __name__ == "__main__":
         #print tracer.position, tracer.velocity
     #glsim.initialiseDisplay()
 
-    for i in range(1000):
+    for i in range(20):
         glsim.stepForward()
-        if i == 200:
-            glsim.addVortons()
+        #if i == 200:
+        #    glsim.addVortons()
+    glsim.endSim()
     #cProfile.runctx("glsim.fluidSim.update(1.0/60.0, 1)", globals(), locals(), "/tmp/fs.profile")
     #glsim.fluidSim.update(1.0/60.0, 1)
     #print vorts

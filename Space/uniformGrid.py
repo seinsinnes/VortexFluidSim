@@ -180,9 +180,9 @@ class UniformGridGeometry:
             self.cellsPerExtent[0]   = float( self.getNumCells( 0 ) ) / float(self.getExtent()[0])
             self.cellsPerExtent[1]   = float( self.getNumCells( 1 ) ) / float(self.getExtent()[1])
             
-            print "c e"
-            print self.getNumCells( 1 )
-            print self.getExtent()
+            print("c e")
+            print(self.getNumCells( 1 ))
+            print(self.getExtent())
             
             if 0.0 == self.getExtent()[2]:
                 # Avoid divide-by-zero for 2D domains that lie in the XY plane.
@@ -334,10 +334,10 @@ class UniformGrid(UniformGridGeometry):
             #            print len(self.contents)
             #            print indices
             
-            return self.contents[indices[0]][indices[1]][indices[2]]
+            return self.contents[int(indices[0])][int(indices[1])][int(indices[2])]
         
         def setCell(self, indices, value):
-            self.contents[indices[0]][indices[1]][indices[2]] = value
+            self.contents[int(indices[0])][int(indices[1])][int(indices[2])] = value
 
         def dumpCells(self):
             dump = ""

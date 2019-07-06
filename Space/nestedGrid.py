@@ -97,7 +97,7 @@ class NestedGrid:
             decimations[ 0 ] = child.getNumCells( 0 ) / parent.getNumCells( 0 )
             decimations[ 1 ] = child.getNumCells( 1 ) / parent.getNumCells( 1 )
             decimations[ 2 ] = child.getNumCells( 2 ) / parent.getNumCells( 2 )
-            print decimations
+            print(decimations)
         
         '''! \brief Precompute decimations for each layer.
 

@@ -1,5 +1,5 @@
 import numpy as np
-from evtk.hl import pointsToVTK, gridToVTK
+from pyevtk.hl import pointsToVTK, gridToVTK
 
 
 

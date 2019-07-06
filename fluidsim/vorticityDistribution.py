@@ -168,10 +168,10 @@ def assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistributio
     # But in typical situations, the user would like expect total number of virtual cells to be closer to numVortonsMax than that.
     # E.g. if numVortonsMax=8^3=512 somehow yielded numCells[0]=numCells[1]=numCells[2]=7 then the ratio would be 343/512~=0.67.
     
-    print numCells
-    print vMin
-    print vMax
-    print numVortonsMax
+    print(numCells)
+    print(vMin)
+    print(vMax)
+    print(numVortonsMax)
     f = open("/tmp/vortons.dmp", "w")
     while numCells[0] * numCells[1] * numCells[2] > numVortonsMax:
         # Number of cells is excessive.
@@ -215,7 +215,7 @@ def assignVorticity( vortons , fMagnitude , numVortonsMax , vorticityDistributio
                 
                 if numpy.sqrt(numpy.vdot(vorticity,vorticity)) > sTiny:
                     #Vorticity is significantly non-zero.
-                    print vorton.radius
+                    print(vorton.radius)
                     f.write(str(vorton.position) + str(vorton.vorticity) +"\n")
                     vortons.append( vorton )
   
