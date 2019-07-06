@@ -22,12 +22,19 @@ import copy
 #import fluid
 import Output.vtk
 #import grid
+import numba
 
 OneOverFourPi       = 1.0 / (4*math.pi)
 sAvoidSingularity   = math.pow( sys.float_info.min , 1.0 / 3.0 )
 
+@numba.jit(["float64[3](float64[3],float64[3])"])
 def crossProduct(a, b):
     return array([a[1] * b[2] - a[2] * b[1] , a[2] * b[0] - a[0] * b[2] , a[0] * b[1] - a[1] * b[0]])
+
+@numba.jit(["float64(float64[3],float64[3])"])
+def dotProduct(a, b):
+    return(a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+
 
 def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, reciprocalSpacing,  halfReciprocalSpacing):
     rMatrix = jacobianGrid.getCell( index)
@@ -65,17 +72,19 @@ def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, recip
         for regular use but it is useful for comparisons.
 
 '''
+@numba.jit
 def computeVelocityBruteForce( vPosition, vortonInfoList ):
 
     #numVortons          = len(self.vortons)
     velocityAccumulator =  array([0.0 , 0.0 , 0.0])
-    refVel =  array([0.0 , 0.0 , 0.0])
+    vVelocity = numpy.tile(array([0.0 , 0.0 , 0.0]),(vortonInfoList.shape[0],1))
+    #refVel =  array([0.0 , 0.0 , 0.0])
     
     #velocityTemp = self.ctypeConv()
     #av = functools.partial(self.accumulateVelocity, vPosition)
     #vPosition = self.ctypeConv(vPosition[0],vPosition[1],vPosition[2])
 
-    for vortonInfo in vortonInfoList:
+    """for vortonInfo in vortonInfoList:
         #self.vortonInfoList.append([rVorton.position, rVorton.vorticity, [rVorton.radius,0.0,0.0]])
         #For each vorton...
         #vortPos = self.ctypeConv(rVorton.position[0],rVorton.position[1],rVorton.position[2])
@@ -83,15 +92,17 @@ def computeVelocityBruteForce( vPosition, vortonInfoList ):
         #vortRadius = ctypes.c_double(rVorton.radius)
         #print "f"
         #vel = computeVel.computevel.accumulatevelocity( vPosition , vortonInfo )
-        #vel = fluid.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )
-        velocityAccumulator += accumulateVelocity( vPosition , vortonInfo[0:3], vortonInfo[3:6], vortonInfo[6] )
-        #print vel
+        #vel = fluid.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )"""
+    #print("shape: ",vortonInfoList[:,0:3].shape)
+    accumulateVelocity( numpy.tile(vPosition,(vortonInfoList.shape[0],1)) , vortonInfoList[:,0:3], vortonInfoList[:,3:6], vortonInfoList[:,6:9],vVelocity )
+    velocityAccumulator = vVelocity.sum(axis=0)
+    """    #print vel
         #velocityAccumulator += vel
         #print "py"
         #refVel += self.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )
 
         #print numpy.ctypeslib.as_array(velocityTemp)
-        #velocityAccumulator += numpy.ctypeslib.as_array(velocityTemp)
+        #velocityAccumulator += numpy.ctypeslib.as_array(velocityTemp)"""
         
     #velocityAccumulator = sum([ av(vortonInfo) for vortonInfo in self.vortonInfoList])
     #return numpy.ctypeslib.as_array(velocityAccumulator)
@@ -99,11 +110,13 @@ def computeVelocityBruteForce( vPosition, vortonInfoList ):
     #print velocityAccumulator
     return velocityAccumulator
 
-def accumulateVelocity( vPosQuery , vortPos, vortVort, vortRadius ):
+@numba.guvectorize(['(float64[3],float64[3], float64[3], float64[3], float64[3])'],'(n),(n),(n),(n)->(n)', target='parallel')
+def accumulateVelocity( vPosQuery , vortPos, vortVort, vortRadius, vVelocity):
+    vortRadius = vortRadius[0]
     #VortonInfo = [positon, vorticity, radius]                                                                                                  
     vNeighborToSelf     = vPosQuery - vortPos                     
     radius2             = vortRadius * vortRadius                                           
-    dist2               = numpy.dot(vNeighborToSelf, vNeighborToSelf) + sAvoidSingularity                 
+    dist2               = dotProduct(vNeighborToSelf, vNeighborToSelf) + sAvoidSingularity                 
     oneOverDist         = 1 / math.sqrt( dist2 )
     
     
@@ -119,10 +132,13 @@ def accumulateVelocity( vPosQuery , vortPos, vortVort, vortRadius ):
         
     #print OneOverFourPi
     #vVelocity +=  OneOverFourPi * ( 8.0 * radius2 * mRadius ) * numpy.cross(mVorticity, vNeighborToSelf) * distLaw
-    vVelocity =  OneOverFourPi * ( 8.0 * radius2 * vortRadius ) * crossProduct(vortVort, vNeighborToSelf) * distLaw 
+    vVel =  OneOverFourPi * ( 8.0 * radius2 * vortRadius ) * crossProduct(vortVort, vNeighborToSelf) * distLaw 
+    vVelocity[0] = vVel[0]
+    vVelocity[1] = vVel[1]
+    vVelocity[2] = vVel[2]
     #print
     #print vVelocity
-    return vVelocity
+    #return vVelocity
 
 
 '''! \brief Compute Jacobian of a vector field
@@ -345,7 +361,7 @@ class SimWorkers:
             print ("recv'd")
             workList = dpipe.recv()
             print ("worklist recv'd")
-            if not vortonList or not workList:
+            if vortonList is None or workList is None:
                 break
             #computeVel.computevel.setvortoninfolist(vortonList, len(vortonList))
             #print "vort"            
@@ -403,7 +419,7 @@ class VortonSim:
         self.massPerParticle = 0.0
         self.vortons = []
         self.tracers = []
-        self.simWF = SimWorkers()
+        #self.simWF = SimWorkers()
         
         #self.computeVel = ctypes.CDLL("/home/users/christopherd/workspace/fluidsim_py/computeVel.so")
         #self.ctypeConv = ctypes.c_double * 3
@@ -810,14 +826,14 @@ class VortonSim:
             #vortPos = self.ctypeConv(rVorton.position[0],rVorton.position[1],rVorton.position[2])
             #vortVort = self.ctypeConv(rVorton.vorticity[0],rVorton.vorticity[1],rVorton.vorticity[2])
             #vortRadius = ctypes.c_double(rVorton.radius)
-            self.vortonInfoList.append([rVorton.position, rVorton.vorticity, [rVorton.radius, 0.0, 0.0]])
-            self.vortonInfoList2.append(numpy.concatenate([rVorton.position, rVorton.vorticity,numpy.array([rVorton.radius])]))
+            #self.vortonInfoList.append([rVorton.position, rVorton.vorticity, [rVorton.radius, 0.0, 0.0]])
+            self.vortonInfoList2.append(numpy.concatenate([rVorton.position, rVorton.vorticity,numpy.array([rVorton.radius,0,0])]))
             #print count,self.vortonInfoList[-1]
             count +=1
-
+        self.vortonInfoList2 = numpy.array(self.vortonInfoList2)
         #f = open("/tmp/velocity.dmp", "w")
         #self.simWF.broadcastVortons(self.vortonInfoList)
-        self.simWF.broadcastVortons(self.vortonInfoList2)
+        #self.simWF.broadcastVortons(numpy.array(self.vortonInfoList2))
         #computeVel.computevel.setvortoninfolist(self.vortonInfoList, len(self.vortonInfoList))
         vMinCorner  = self.velGrid.getMinCorner()
         nudge       = 1.0 - 2.0 * sys.float_info.epsilon
@@ -864,7 +880,10 @@ class VortonSim:
                     #vel2 = self.computeVelocityBruteForce( vPosition )
                     #print [idx_x,idx_y,idx_z]
                     #self.simWF.workQ.put([vPosition,[idx_x,idx_y,idx_z]])
-                    gPoints.append([array(vPosition),[idx_x,idx_y,idx_z]])
+                    
+                    #gPoints.append([array(vPosition),[idx_x,idx_y,idx_z]])
+                    vVelocity = computeVelocityBruteForce(array(vPosition), self.vortonInfoList2)
+                    self.velGrid.setCell([idx_x,idx_y,idx_z], vVelocity)
                     #vel = computeVel.computevel.computevelocitybruteforce( vPosition )
                     #print "f"
                     #print vel
@@ -872,7 +891,7 @@ class VortonSim:
                     #print vel2
                     #self.velGrid.setCell([idx_x,idx_y,idx_z], vel)
         #self.simWF.workQ.put(0)
-        self.simWF.scatterWork(gPoints)
+        #self.simWF.scatterWork(gPoints)
         f2 = open("/tmp/grid.b","w")
         
         
@@ -889,12 +908,12 @@ class VortonSim:
             zi+=1
         f2.close()
         print("getting results")
-        while True:
-            result = self.simWF.getResult()
-            if result == None:
-                break
-
-            self.velGrid.setCell(result[0], result[1])
+        #while True:
+        #    result = self.simWF.getResult()
+        #    if result == None:
+        #        break
+        
+        #    self.velGrid.setCell(result[0], result[1])
         print("results recv'd")
 
         f2 = open("/tmp/grid.a","w")

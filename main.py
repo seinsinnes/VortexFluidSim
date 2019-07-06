@@ -89,7 +89,7 @@ if __name__ == "__main__":
         glsim.stepForward()
         #if i == 200:
         #    glsim.addVortons()
-    glsim.endSim()
+    #glsim.endSim()
     #cProfile.runctx("glsim.fluidSim.update(1.0/60.0, 1)", globals(), locals(), "/tmp/fs.profile")
     #glsim.fluidSim.update(1.0/60.0, 1)
     #print vorts
