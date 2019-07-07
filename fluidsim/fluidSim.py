@@ -87,15 +87,15 @@ def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, recip
 
 '''
 @numba.jit(parallel = True)
-def computeVelocityBruteForce( vPosition, vortonInfoList ):
+def computeVelocityBruteForce( gPosition, vortonInfoList ):
 
     #numVortons          = len(self.vortons)
+    vortPos = numpy.ascontiguousarray(numpy.tile(vortonInfoList[:,0:3],(gPosition.shape[0],1)))
+    vortVort = numpy.ascontiguousarray(numpy.tile(vortonInfoList[:,3:6],(gPosition.shape[0],1)))
+    vortRadius = numpy.ascontiguousarray(numpy.tile(vortonInfoList[:,6:9],(gPosition.shape[0],1)))
     velocityAccumulator =  numpy.ascontiguousarray(array([0.0 , 0.0 , 0.0],dtype=numpy.float64))
-    vVelocity = numpy.ascontiguousarray(numpy.tile(array([0.0 , 0.0 , 0.0],dtype=numpy.float64),(vortonInfoList.shape[0],1)))
-    vPosition = numpy.ascontiguousarray(numpy.tile(vPosition,(vortonInfoList.shape[0],1)))
-    vortPos = numpy.ascontiguousarray(vortonInfoList[:,0:3])
-    vortVort = numpy.ascontiguousarray(vortonInfoList[:,3:6])
-    vortRadius = numpy.ascontiguousarray(vortonInfoList[:,6:9])
+    vVelocity = numpy.ascontiguousarray(numpy.tile(array([0.0 , 0.0 , 0.0],dtype=numpy.float64),(vortonInfoList.shape[0]*gPosition.shape[0],1)))
+    vPosition = numpy.ascontiguousarray(numpy.repeat(gPosition,vortonInfoList.shape[0],axis=0))
     #refVel =  array([0.0 , 0.0 , 0.0])
     
     #velocityTemp = self.ctypeConv()
@@ -113,7 +113,9 @@ def computeVelocityBruteForce( vPosition, vortonInfoList ):
         #vel = fluid.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )"""
     #print("shape: ",vortonInfoList[:,0:3].shape)
     accumulateVelocity( vPosition , vortPos, vortVort, vortRadius, vVelocity )
-    velocityAccumulator = vVelocity.sum(axis=0)
+    vortonNum = len(vortonInfoList)
+    for i in range(len(gPosition)):
+        velocityAccumulator = vVelocity[0+(i*vortonNum):vortonNum+(i*vortonNum)].sum(axis=0)
     """    #print vel
         #velocityAccumulator += vel
         #print "py"
@@ -907,9 +909,9 @@ class VortonSim:
                     #print [idx_x,idx_y,idx_z]
                     #self.simWF.workQ.put([vPosition,[idx_x,idx_y,idx_z]])
                     
-                    #gPoints.append([array(vPosition),[idx_x,idx_y,idx_z]])
-                    vVelocity = computeVelocityBruteForce(array(vPosition,dtype=numpy.float64), self.vortonInfoList2)
-                    self.velGrid.setCell([idx_x,idx_y,idx_z], vVelocity)
+                    gPoints.append(array(vPosition))
+                    #vVelocity = computeVelocityBruteForce(array(vPosition,dtype=numpy.float64), self.vortonInfoList2)
+                    #self.velGrid.setCell([idx_x,idx_y,idx_z], vVelocity)
                     #vel = computeVel.computevel.computevelocitybruteforce( vPosition )
                     #print "f"
                     #print vel
@@ -918,7 +920,7 @@ class VortonSim:
                     #self.velGrid.setCell([idx_x,idx_y,idx_z], vel)
         #self.simWF.workQ.put(0)
         #self.simWF.scatterWork(gPoints)
-        f2 = open("/tmp/grid.b","w")
+        """f2 = open("/tmp/grid.b","w")
         
         
         zi = 0
@@ -932,8 +934,9 @@ class VortonSim:
                     xi += 1
                 yi+=1
             zi+=1
-        f2.close()
+        f2.close()"""
         print("getting results")
+        vVelocity = computeVelocityBruteForce(array(gPoints,dtype=numpy.float64), self.vortonInfoList2)
         #while True:
         #    result = self.simWF.getResult()
         #    if result == None:
@@ -941,8 +944,30 @@ class VortonSim:
         
         #    self.velGrid.setCell(result[0], result[1])
         print("results recv'd")
+        i = 0
+        for idx_z in range(izStart, izEnd ):
+            #For subset of z index values...
+            vPosition = array([0.0,0.0,0.0], dtype = numpy.float32)
+            #Compute the z-coordinate of the world-space position of this gridpoint.
+            vPosition[2] = vMinCorner[2] + float( idx_z ) * vSpacing[2]
+            #Precompute the z contribution to the offset into the velocity grid.
+            offsetZ = idx_z * numXY
+            for idx_y in range(0, dims[1]):
+                #For every gridpoint along the y-axis...
+                #Compute the y-coordinate of the world-space position of this gridpoint.
+                vPosition[1] = vMinCorner[1] + float( idx_y ) * vSpacing[1]
+                # Precompute the y contribution to the offset into the velocity grid.
+                offsetYZ = idx_y * dims[0] + offsetZ
+                for idx_x in range( 0, dims[0] ):
+                    # For every gridpoint along the x-axis...
+                    #Compute the x-coordinate of the world-space position of this gridpoint.
+                    vPosition[0] = vMinCorner[0] + float( idx_x ) * vSpacing[0]
+                    # Compute the offset into the velocity grid.
+                    offsetXYZ = idx_x + offsetYZ
+                    self.velGrid.setCell([idx_x,idx_y,idx_z], vVelocity[i])
+                    i +=1
 
-        f2 = open("/tmp/grid.a","w")
+        """f2 = open("/tmp/grid.a","w")
         
         
         zi = 0
@@ -956,7 +981,7 @@ class VortonSim:
                     xi += 1
                 yi+=1
             zi+=1
-        f2.close()
+        f2.close()"""
     '''! \brief Compute velocity at a given point in space, due to influence of vortons
 
     \param vPosition - point in space
