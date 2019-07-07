@@ -23,18 +23,32 @@ import copy
 import Output.vtk
 #import grid
 import numba
+from numba import cuda
 
 OneOverFourPi       = 1.0 / (4*math.pi)
 sAvoidSingularity   = math.pow( sys.float_info.min , 1.0 / 3.0 )
 
-@numba.jit(["float64[3](float64[3],float64[3])"])
-def crossProduct(a, b):
-    return array([a[1] * b[2] - a[2] * b[1] , a[2] * b[0] - a[0] * b[2] , a[0] * b[1] - a[1] * b[0]])
+@cuda.jit("(float64[3],float64[3],float64[3])", inline=True,device=True)
+def crossProduct(a, b, c):
+    c[0] = a[1] * b[2] - a[2] * b[1]
+    c[1] = a[2] * b[0] - a[0] * b[2]
+    c[2] = a[0] * b[1] - a[1] * b[0]
 
-@numba.jit(["float64(float64[3],float64[3])"])
+@cuda.jit("(float64[3],float64[3],float64[3])", inline=True,device=True)
+def subtract(a, b, c):
+    c[0] = a[0] - b[0]
+    c[1] = a[1] - b[1]
+    c[2] = a[2] - b[2]
+
+@cuda.jit("float64(float64[3],float64[3])", inline=True,device=True)
 def dotProduct(a, b):
     return(a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
 
+@cuda.jit("(float64,float64[3],float64[3])", inline=True,device=True)
+def scalarProduct(a, b, c):
+    c[0] = a*b[0]
+    c[1] = a*b[1]
+    c[2] = a*b[2]
 
 def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, reciprocalSpacing,  halfReciprocalSpacing):
     rMatrix = jacobianGrid.getCell( index)
@@ -72,12 +86,16 @@ def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, recip
         for regular use but it is useful for comparisons.
 
 '''
-@numba.jit
+@numba.jit(parallel = True)
 def computeVelocityBruteForce( vPosition, vortonInfoList ):
 
     #numVortons          = len(self.vortons)
-    velocityAccumulator =  array([0.0 , 0.0 , 0.0])
-    vVelocity = numpy.tile(array([0.0 , 0.0 , 0.0]),(vortonInfoList.shape[0],1))
+    velocityAccumulator =  numpy.ascontiguousarray(array([0.0 , 0.0 , 0.0],dtype=numpy.float64))
+    vVelocity = numpy.ascontiguousarray(numpy.tile(array([0.0 , 0.0 , 0.0],dtype=numpy.float64),(vortonInfoList.shape[0],1)))
+    vPosition = numpy.ascontiguousarray(numpy.tile(vPosition,(vortonInfoList.shape[0],1)))
+    vortPos = numpy.ascontiguousarray(vortonInfoList[:,0:3])
+    vortVort = numpy.ascontiguousarray(vortonInfoList[:,3:6])
+    vortRadius = numpy.ascontiguousarray(vortonInfoList[:,6:9])
     #refVel =  array([0.0 , 0.0 , 0.0])
     
     #velocityTemp = self.ctypeConv()
@@ -94,7 +112,7 @@ def computeVelocityBruteForce( vPosition, vortonInfoList ):
         #vel = computeVel.computevel.accumulatevelocity( vPosition , vortonInfo )
         #vel = fluid.accumulateVelocity( vPosition , vortonInfo[0], vortonInfo[1], vortonInfo[2][0] )"""
     #print("shape: ",vortonInfoList[:,0:3].shape)
-    accumulateVelocity( numpy.tile(vPosition,(vortonInfoList.shape[0],1)) , vortonInfoList[:,0:3], vortonInfoList[:,3:6], vortonInfoList[:,6:9],vVelocity )
+    accumulateVelocity( vPosition , vortPos, vortVort, vortRadius, vVelocity )
     velocityAccumulator = vVelocity.sum(axis=0)
     """    #print vel
         #velocityAccumulator += vel
@@ -110,11 +128,13 @@ def computeVelocityBruteForce( vPosition, vortonInfoList ):
     #print velocityAccumulator
     return velocityAccumulator
 
-@numba.guvectorize(['(float64[3],float64[3], float64[3], float64[3], float64[3])'],'(n),(n),(n),(n)->(n)', target='parallel')
+@numba.guvectorize(['(float64[3],float64[3], float64[3], float64[3], float64[3])'],'(n),(n),(n),(n)->(n)', target='cuda')
 def accumulateVelocity( vPosQuery , vortPos, vortVort, vortRadius, vVelocity):
     vortRadius = vortRadius[0]
-    #VortonInfo = [positon, vorticity, radius]                                                                                                  
-    vNeighborToSelf     = vPosQuery - vortPos                     
+    #VortonInfo = [positon, vorticity, radius]
+
+    vNeighborToSelf = numba.cuda.local.array(3,numba.float64)
+    subtract(vPosQuery, vortPos, vNeighborToSelf)                     
     radius2             = vortRadius * vortRadius                                           
     dist2               = dotProduct(vNeighborToSelf, vNeighborToSelf) + sAvoidSingularity                 
     oneOverDist         = 1 / math.sqrt( dist2 )
@@ -129,10 +149,16 @@ def accumulateVelocity( vPosQuery , vortPos, vortVort, vortRadius, vVelocity):
     else:
         #Outside vortex core                             \
         distLaw = ( oneOverDist / dist2 )
-        
+    
+
+    vortNeighborCross = numba.cuda.local.array(3,numba.float64)
+    crossProduct(vortVort, vNeighborToSelf, vortNeighborCross)
+
+    vVel = numba.cuda.local.array(3,numba.float64)
+    scalarProduct(OneOverFourPi * ( 8.0 * radius2 * vortRadius ) * distLaw , vortNeighborCross, vVel)
     #print OneOverFourPi
     #vVelocity +=  OneOverFourPi * ( 8.0 * radius2 * mRadius ) * numpy.cross(mVorticity, vNeighborToSelf) * distLaw
-    vVel =  OneOverFourPi * ( 8.0 * radius2 * vortRadius ) * crossProduct(vortVort, vNeighborToSelf) * distLaw 
+    #vVel =  OneOverFourPi * ( 8.0 * radius2 * vortRadius ) * vortNeighborCross * distLaw 
     vVelocity[0] = vVel[0]
     vVelocity[1] = vVel[1]
     vVelocity[2] = vVel[2]
@@ -882,7 +908,7 @@ class VortonSim:
                     #self.simWF.workQ.put([vPosition,[idx_x,idx_y,idx_z]])
                     
                     #gPoints.append([array(vPosition),[idx_x,idx_y,idx_z]])
-                    vVelocity = computeVelocityBruteForce(array(vPosition), self.vortonInfoList2)
+                    vVelocity = computeVelocityBruteForce(array(vPosition,dtype=numpy.float64), self.vortonInfoList2)
                     self.velGrid.setCell([idx_x,idx_y,idx_z], vVelocity)
                     #vel = computeVel.computevel.computevelocitybruteforce( vPosition )
                     #print "f"
