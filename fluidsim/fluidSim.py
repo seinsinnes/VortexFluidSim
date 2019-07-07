@@ -93,7 +93,7 @@ def computeVelocityBruteForce( gPosition, vortonInfoList ):
     vortPos = numpy.ascontiguousarray(numpy.tile(vortonInfoList[:,0:3],(gPosition.shape[0],1)))
     vortVort = numpy.ascontiguousarray(numpy.tile(vortonInfoList[:,3:6],(gPosition.shape[0],1)))
     vortRadius = numpy.ascontiguousarray(numpy.tile(vortonInfoList[:,6:9],(gPosition.shape[0],1)))
-    velocityAccumulator =  numpy.ascontiguousarray(array([0.0 , 0.0 , 0.0],dtype=numpy.float64))
+    #velocityAccumulator =  numpy.ascontiguousarray(array([0.0 , 0.0 , 0.0],dtype=numpy.float64))
     vVelocity = numpy.ascontiguousarray(numpy.tile(array([0.0 , 0.0 , 0.0],dtype=numpy.float64),(vortonInfoList.shape[0]*gPosition.shape[0],1)))
     vPosition = numpy.ascontiguousarray(numpy.repeat(gPosition,vortonInfoList.shape[0],axis=0))
     #refVel =  array([0.0 , 0.0 , 0.0])
@@ -114,8 +114,11 @@ def computeVelocityBruteForce( gPosition, vortonInfoList ):
     #print("shape: ",vortonInfoList[:,0:3].shape)
     accumulateVelocity( vPosition , vortPos, vortVort, vortRadius, vVelocity )
     vortonNum = len(vortonInfoList)
+    print("vel_shape ", vVelocity.shape)
+    velocityAccumulator = []
     for i in range(len(gPosition)):
-        velocityAccumulator = vVelocity[0+(i*vortonNum):vortonNum+(i*vortonNum)].sum(axis=0)
+        velocityAccumulator.append(vVelocity[0+(i*vortonNum):vortonNum+(i*vortonNum)].sum(axis=0))
+    #print("velacc_shape ", velocityAccumulator.shape)
     """    #print vel
         #velocityAccumulator += vel
         #print "py"
