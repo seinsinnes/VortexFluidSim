@@ -86,7 +86,7 @@ def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, recip
         for regular use but it is useful for comparisons.
 
 '''
-@numba.jit(parallel = True)
+#@numba.jit(parallel = True)
 def computeVelocityBruteForce( gPosition, vortonInfoList ):
 
     #numVortons          = len(self.vortons)
@@ -1271,7 +1271,7 @@ class VortonSim:
         #largestVel = 0.0
         #print f
         print("copy grid cont")
-        f2 = open("sim.out/grid","w")
+        """f2 = open("sim.out/grid","w")
         
         
         zi = 0
@@ -1285,7 +1285,7 @@ class VortonSim:
                     xi += 1
                 yi+=1
             zi+=1
-        f2.close()
+        f2.close()"""
         #grid.grid.setgridcontents(self.velGrid.contents,len(self.velGrid.contents),len(self.velGrid.contents[0]),len(self.velGrid.contents[0][0]))
         cellsPerExtent = self.velGrid.getCellsPerExtent()
         #grid.grid.setcellsperextent(cellsPerExtent)
