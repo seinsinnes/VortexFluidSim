@@ -858,7 +858,7 @@ class VortonSim:
             self.vortonInfoList2.append(numpy.concatenate([rVorton.position, rVorton.vorticity,numpy.array([rVorton.radius,0,0])]))
             #print count,self.vortonInfoList[-1]
             count +=1
-        self.vortonInfoList2 = numpy.array(self.vortonInfoList2)
+        self.vortonInfoList2 = numpy.array(self.vortonInfoList2,dtype=numpy.float64)
         #f = open("/tmp/velocity.dmp", "w")
         #self.simWF.broadcastVortons(self.vortonInfoList)
         #self.simWF.broadcastVortons(numpy.array(self.vortonInfoList2))
