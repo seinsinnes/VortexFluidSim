@@ -8,7 +8,8 @@ from numpy import array
 import numpy
 import math
 import random
-from multiprocessing import Process, Queue, cpu_count, Pipe
+#from multiprocessing import Process, Queue, cpu_count, Pipe
+import dask
 
 from Space.uniformGrid import UniformGrid 
 from Space.nestedGrid import NestedGrid
@@ -86,7 +87,7 @@ def computeBoundaryDerivatives( jacobianGrid , vecGrid, index, dimsMinus1, recip
         for regular use but it is useful for comparisons.
 
 '''
-#@numba.jit(parallel = True)
+
 def computeVelocityBruteForce( gPosition, vortonInfoList ):
 
     #numVortons          = len(self.vortons)
@@ -438,7 +439,7 @@ class VortonSim:
         maxFloatValue = sys.float_info.max 
         
         self.minCorner = array([maxFloatValue, maxFloatValue, maxFloatValue])
-        self.maxCorner = -self.minCorner
+        self.maxCorner = -(self.minCorner)
         self.viscosity = viscosity
         #self.velocityGrid =
         self.influenceTree = NestedGrid()   # Influence tree
@@ -842,6 +843,7 @@ class VortonSim:
             and that the velocity grid has been allocated.
 
     '''
+    @dask.delayed
     def computeVelocityGridSlice(self, izStart , izEnd ):
 
         '''#if VELOCITY_FROM_TREE
@@ -940,6 +942,8 @@ class VortonSim:
         f2.close()"""
         print("getting results")
         vVelocity = computeVelocityBruteForce(array(gPoints,dtype=numpy.float64), self.vortonInfoList2)
+
+        return vVelocity
         #while True:
         #    result = self.simWF.getResult()
         #    if result == None:
@@ -947,28 +951,7 @@ class VortonSim:
         
         #    self.velGrid.setCell(result[0], result[1])
         print("results recv'd")
-        i = 0
-        for idx_z in range(izStart, izEnd ):
-            #For subset of z index values...
-            vPosition = array([0.0,0.0,0.0], dtype = numpy.float32)
-            #Compute the z-coordinate of the world-space position of this gridpoint.
-            vPosition[2] = vMinCorner[2] + float( idx_z ) * vSpacing[2]
-            #Precompute the z contribution to the offset into the velocity grid.
-            offsetZ = idx_z * numXY
-            for idx_y in range(0, dims[1]):
-                #For every gridpoint along the y-axis...
-                #Compute the y-coordinate of the world-space position of this gridpoint.
-                vPosition[1] = vMinCorner[1] + float( idx_y ) * vSpacing[1]
-                # Precompute the y contribution to the offset into the velocity grid.
-                offsetYZ = idx_y * dims[0] + offsetZ
-                for idx_x in range( 0, dims[0] ):
-                    # For every gridpoint along the x-axis...
-                    #Compute the x-coordinate of the world-space position of this gridpoint.
-                    vPosition[0] = vMinCorner[0] + float( idx_x ) * vSpacing[0]
-                    # Compute the offset into the velocity grid.
-                    offsetXYZ = idx_x + offsetYZ
-                    self.velGrid.setCell([idx_x,idx_y,idx_z], vVelocity[i])
-                    i +=1
+
 
         """f2 = open("/tmp/grid.a","w")
         
@@ -1043,14 +1026,52 @@ class VortonSim:
         self.velGrid.init()                                   # Reserve memory for velocity grid.
 
         numZ = self.velGrid.getNumPoints( 2 )
+        vMinCorner  = self.velGrid.getMinCorner()
+        nudge       = 1.0 - 2.0 * sys.float_info.epsilon
+        vSpacing    = self.velGrid.getCellSpacing() * nudge
+        dims     =   [ self.velGrid.getNumPoints( 0 ) \
+                       , self.velGrid.getNumPoints( 1 ) \
+                       , self.velGrid.getNumPoints( 2 ) ]
+        
+        numXY       = dims[0] * dims[1]
+        gPoints = []
+        numberOfProcs = 8
+        numberOfProcs = min(numberOfProcs,numZ)
+        grainSize =  int(math.ceil(numZ / float(numberOfProcs) ))
+        zSlices = [(i * grainSize, (i + 1) * grainSize) for i in range(numberOfProcs)]
+        zSlices[-1][1] = numZ
+        vVelocityResults = []
+        for slce in zSlices:
+            vVelocityResults.append(self.computeVelocityGridSlice( slce[0] , slce[1] ))
 
-        '''#if USE_TBB
-        // Estimate grain size based on size of problem and number of processors.
-        const unsigned grainSize =  MAX2( 1 , numZ / gNumberOfProcessors ) ;
-        // Compute velocity grid using multiple threads.
-        parallel_for( tbb::blocked_range<size_t>( 0 , numZ , grainSize ) , VortonSim_ComputeVelocityGrid_TBB( this ) ) ;
-        #else'''
-        self.computeVelocityGridSlice( 0 , numZ )
+        vVelocity = dask.compute(*vVelocityResults)
+
+
+
+        for slce in zSlices:
+        #For each zSlice
+            i = 0
+            for idx_z in range(slce[0], slce[1] ):
+                #For subset of z index values...
+                vPosition = array([0.0,0.0,0.0], dtype = numpy.float32)
+                #Compute the z-coordinate of the world-space position of this gridpoint.
+                vPosition[2] = vMinCorner[2] + float( idx_z ) * vSpacing[2]
+                #Precompute the z contribution to the offset into the velocity grid.
+                offsetZ = idx_z * numXY
+                for idx_y in range(0, dims[1]):
+                    #For every gridpoint along the y-axis...
+                    #Compute the y-coordinate of the world-space position of this gridpoint.
+                    vPosition[1] = vMinCorner[1] + float( idx_y ) * vSpacing[1]
+                    # Precompute the y contribution to the offset into the velocity grid.
+                    offsetYZ = idx_y * dims[0] + offsetZ
+                    for idx_x in range( 0, dims[0] ):
+                        # For every gridpoint along the x-axis...
+                        #Compute the x-coordinate of the world-space position of this gridpoint.
+                        vPosition[0] = vMinCorner[0] + float( idx_x ) * vSpacing[0]
+                        # Compute the offset into the velocity grid.
+                        offsetXYZ = idx_x + offsetYZ
+                        self.velGrid.setCell([idx_x,idx_y,idx_z], vVelocity[i])
+                        i +=1
 
 
 
